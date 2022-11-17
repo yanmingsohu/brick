@@ -7,13 +7,13 @@ A web application development framework with basic functions
 
 ```go
 // HTTP post 7077
-b := brick.NewBrick(7077)
+b := brick.NewBrick(port 7077, session-time)
 
 // Redirect '/' to "/brick/ui"
 b.HttpJumpMapping("/", "/brick/ui")
 
 // static page service
-b.StaticPage("/brick/ui", "www", "index.html")
+b.StaticPage("/brick/ui", "www")
 
 // start http server
 b.StartHttpServer();
@@ -47,3 +47,30 @@ B.xhtml file:
 Package static resources as go source code.
 
 `node build`
+
+
+Static files in the compilation directory are go resource bundles
+Read build.json in the current directory as the build configuration
+run: execute the script without parameters nodejs > v6
+
+Generated resource functions are mounted with brice.service(..)
+
+
+###  Configuration instructions:
+
+buiod.josn file:
+```
+{
+  "packageName": "brick",
+  "fileName": "resource_www.go",
+  "wwwDir": "../www",
+  "outDir": ".",
+  "varName": "file_mapping"
+}
+```
+
+Traverse the files in the wwwDir directory, save the file content to the varName variable,
+filename is variable index; output to GO source file at outDir/fileName,
+The package name is packageName; the varName variable is usually defined in other source files of the package,
+variable type is map[string][]byte.
+Files in deep directories are not supported.
