@@ -53,8 +53,7 @@ Static files in the compilation directory are go resource bundles
 Read build.json in the current directory as the build configuration
 run: execute the script without parameters nodejs > v6
 
-Generated resource functions are mounted with brice.service(..)
-
+The generated go code sets static resources into variables by accessing `brick.file_mapping`.
 
 ###  Configuration instructions:
 
@@ -73,4 +72,3 @@ Traverse the files in the wwwDir directory, save the file content to the varName
 filename is variable index; output to GO source file at outDir/fileName,
 The package name is packageName; the varName variable is usually defined in other source files of the package,
 variable type is map[string][]byte.
-Files in deep directories are not supported.
