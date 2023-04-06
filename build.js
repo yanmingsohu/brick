@@ -13,12 +13,12 @@
 const zb        = require('zlib')
 const fs        = require('fs');
 const pt        = require('path');
-const cf        = require("./build.json");
 const st        = require("stream");
 const CleanCSS  = require('clean-css');
 const htmlmin   = require('html-minifier');
 const colors    = require('colors');
 const babel     = require("babel-core");
+const cf        = require(pt.join(process.cwd(), "./build.json"));
 
 const html_min_opt = {
   minifyCSS: true, 
@@ -44,9 +44,10 @@ import (
   "compress/gzip"
   "bytes"
   "log"
+  "github.com/yanmingsohu/brick"
 )
 
-func _uz(input []byte) []byte {
+func _unzip(input []byte) []byte {
   r, err := gzip.NewReader(bytes.NewBuffer(input))
   if err != nil {
     log.Println("Resource fail", err)
@@ -59,14 +60,18 @@ func _uz(input []byte) []byte {
   }
   return a
 }
+
+func _unzname(i []byte) string {
+	return string(_unzip(i))
+}
 `
 
-var fullpath = pt.join(__dirname, cf.outDir, cf.fileName);
+var fullpath = pt.join(process.cwd(), cf.outDir, cf.fileName);
 var outfile = makeSource(fullpath, cf.varName);
 outfile.setPackage(cf.packageName);
 
 outfile.beginInit();
-buildDir([], pt.join(__dirname, cf.wwwDir), outfile, function() {
+buildDir([], pt.join(process.cwd(), cf.wwwDir), outfile, function() {
   outfile.endInit();
   console.log("\nDone", outfile.fileName);
 });
@@ -115,7 +120,9 @@ function makeSource(outFile, varName) {
 
   function beginInit() {
     fs.writeSync(file, go_code);
-    fs.writeSync(file, "\nfunc init() {");
+    fs.writeSync(file, "\nfunc init() {\n");
+    fs.writeSync(file, varName);
+    fs.writeSync(file, ":= brick.GetFileMapping()")
   }
 
   function endInit() {
@@ -129,8 +136,10 @@ function makeSource(outFile, varName) {
   }
 
   function localfile(path, name, over) {
-    fs.writeSync(file, ['\n\n', varName, 
-        '["', name, '"]=_uz([]byte{'].join(''));
+    var zname = toByteArrString('[]byte', zb.gzipSync(name));
+
+    fs.writeSync(file, ['\n\n',
+      varName, '[_unzname(', zname, ')] = ([]byte{'].join(''));
     
     var wstream = fs.createWriteStream(null, {
       fd : file, 
@@ -166,10 +175,23 @@ function makeSource(outFile, varName) {
     wstream.on('finish', end);
       
     function end() {
+      var logstr = toByteArrString('[]byte', zb.gzipSync("Web File: "+ name));
       fs.writeSync(file, '})');
+      fs.writeSync(file, ['\nlog.Println(_unzname(', logstr, '))'].join(''))
       over();
     }
   }
+}
+
+
+function toByteArrString(prefix, buf) {
+  let out = [ prefix, '{' ];
+  for (let i=0; i<buf.length; ++i) {
+    out.push(buf[i], ',');
+    if (i%20 == 0) out.push('\n');
+  }
+  out.push('}');
+  return out.join('');
 }
 
 

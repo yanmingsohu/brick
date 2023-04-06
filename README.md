@@ -53,18 +53,19 @@ Static files in the compilation directory are go resource bundles
 Read build.json in the current directory as the build configuration
 run: execute the script without parameters nodejs > v6
 
-The generated go code sets static resources into variables by accessing `brick.file_mapping`.
+The generated go code sets static resources into variables by accessing 
+`fm := brick.GetFileMapping()`.
 
 ###  Configuration instructions:
 
-buiod.josn file:
+buiod.json file:
 ```
 {
   "packageName": "brick",
   "fileName": "resource_www.go",
   "wwwDir": "../www",
-  "outDir": ".",
-  "varName": "file_mapping"
+  "outDir": "./resource",
+  "varName": "fm"
 }
 ```
 

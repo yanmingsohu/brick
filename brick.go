@@ -140,7 +140,7 @@ func NewBrick(httpPort int, sessionExp time.Duration) *Brick {
     errorHandle     : defaultErrorHandle,
   
     sess: sessions.New(sessions.Config{
-      Cookie: "witnesssessionid",
+      Cookie: "bricksessionid",
       Expires: sessionExp,
       Encode: secureCookie.Encode,
       Decode: secureCookie.Decode,
@@ -578,6 +578,7 @@ func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
   if has {
     // log.Println("Prog Resource", fileName)
     w.Header().Set("Content-Type", getMimeType(fileName))
+		w.Header().Set("Content-Encoding", "gzip")
     w.WriteHeader(200)
     w.Write(content)
     return;
@@ -627,6 +628,11 @@ func LastSlice(str string, maxLen int, prefix string) string {
     return string(n)
   }
   return str
+}
+
+
+func GetFileMapping() map[string][]byte {
+	return file_mapping
 }
 
 
