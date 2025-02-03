@@ -6,13 +6,18 @@ A web application development framework with basic functions
 ## Basic use
 
 ```go
+conf := brick.Config{
+  HttpPort  : 7077, 
+  SessionExp: 1 * time.Hour, 
+  CookieName: "testserver",
+}
 // HTTP post 7077
-b := brick.NewBrick(port 7077, session-time)
+b := brick.NewBrick(conf)
 
 // Redirect '/' to "/brick/ui"
 b.HttpJumpMapping("/", "/brick/ui")
 
-// static page service
+// static page service, auto use buildin resources
 b.StaticPage("/brick/ui", "www")
 
 // start http server
@@ -56,9 +61,10 @@ run: execute the script without parameters nodejs > v6
 The generated go code sets static resources into variables by accessing 
 `fm := brick.GetFileMapping()`.
 
+
 ###  Configuration instructions:
 
-buiod.json file:
+build.json file:
 ```
 {
   "packageName": "brick",

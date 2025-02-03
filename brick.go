@@ -122,16 +122,23 @@ type HttpErrorHandler func(hd *Http, err interface{})
 // 包内全局变量, 使用 build.js 构建的代码将设置这个变量
 var file_mapping = make(map[string][]byte)
 
+
+type Config struct {
+	HttpPort int
+	SessionExp time.Duration
+	CookieName string
+}
+
 //
 // 创建 Brick 的实例, session 对象在 sessionExp 后无效.
 //
-func NewBrick(httpPort int, sessionExp time.Duration) *Brick {
+func NewBrick(conf Config) *Brick {
   secureCookie := securecookie.New(
     securecookie.GenerateRandomKey(32), 
     securecookie.GenerateRandomKey(16))
 
   b := Brick{ 
-    HttpPort        : httpPort,
+    HttpPort        : conf.HttpPort,
     secureCookie    : secureCookie,
     cachedTemplate  : make(map[string]*CachedTemplate),
     serveMux        : http.NewServeMux(),
@@ -140,8 +147,8 @@ func NewBrick(httpPort int, sessionExp time.Duration) *Brick {
     errorHandle     : defaultErrorHandle,
   
     sess: sessions.New(sessions.Config{
-      Cookie: "bricksessionid",
-      Expires: sessionExp,
+      Cookie: conf.CookieName,
+      Expires: conf.SessionExp,
       Encode: secureCookie.Encode,
       Decode: secureCookie.Decode,
     }),
