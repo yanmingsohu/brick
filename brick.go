@@ -51,7 +51,7 @@ type defaultLogger struct {
 type Brick struct {
   sess            *sessions.Sessions
   secureCookie    *securecookie.SecureCookie
-  HttpPort        int
+  addr            string
   serveMux        *http.ServeMux
   funcMap         template.FuncMap
   cachedTemplate  map[string]*CachedTemplate
@@ -60,6 +60,7 @@ type Brick struct {
   log             Logger
   errorHandle     HttpErrorHandler
   Debug           bool
+	serv            http.Server
 } 
 
 type Http struct {
@@ -134,17 +135,27 @@ type Config struct {
 //
 func NewBrick(conf Config) *Brick {
   secureCookie := securecookie.New(
-    securecookie.GenerateRandomKey(32), 
-    securecookie.GenerateRandomKey(16))
+			securecookie.GenerateRandomKey(32), 
+			securecookie.GenerateRandomKey(16))
+
+	mux := http.NewServeMux()
+	hport := ":"+ strconv.Itoa(conf.HttpPort);
+	hname, err := os.Hostname()
+	if err != nil {
+		hname = "localhost:"+ hport
+	} else {
+		hname += hport
+	}
 
   b := Brick{ 
-    HttpPort        : conf.HttpPort,
+    addr       			: hname,
     secureCookie    : secureCookie,
     cachedTemplate  : make(map[string]*CachedTemplate),
-    serveMux        : http.NewServeMux(),
+    serveMux        : mux,
     funcMap         : template.FuncMap{},
     log             : &defaultLogger{},
     errorHandle     : defaultErrorHandle,
+		serv 						: http.Server{Addr: hport, Handler: mux},
   
     sess: sessions.New(sessions.Config{
       Cookie: conf.CookieName,
@@ -188,9 +199,19 @@ func (b *Brick) setTplFunc(name string, fn interface{})(error) {
 // 启动服务, 该方法会阻塞
 //
 func (b *Brick) StartHttpServer() error {
-  port := ":"+ strconv.Itoa(b.HttpPort);
-  b.log.Info("Server on http://localhost"+ port)
-	return http.ListenAndServe(port, b.serveMux)
+  b.log.Info("Server on http://"+ b.addr)
+	return b.serv.ListenAndServe()
+}
+
+
+func (b *Brick) StartHttpsServer(cert string, key string) error {
+  b.log.Info("Server on https://"+ b.addr)
+	return b.serv.ListenAndServeTLS(cert, key)
+}
+
+
+func (b *Brick) Close() error {
+	return b.serv.Close()
 }
 
 
@@ -392,7 +413,7 @@ func (h *Http) Json(m interface{}) {
 func (h* Http) init_query() {
   if h.q == nil {
     ct := h.R.Header.Get("Content-Type")
-    if strings.Index(ct, "application/x-www-form-urlencoded") >= 0 {
+    if strings.Contains(ct, "application/x-www-form-urlencoded") {
       h.R.ParseForm()
       h.q = &h.R.PostForm
     } else {
@@ -458,7 +479,7 @@ func (h *Http) URLParam(fixBase string, out ...*string) int {
   ui := 0
 
   if olen <= 0 {
-    panic(errors.New("Not out bind param"))
+    panic(errors.New("not out bind param"))
   }
 
   for ; ui < ulen; ui++ {
@@ -672,5 +693,5 @@ func (d *defaultLogger) Error(v...interface{}) {
 }
 
 func (d *defaultLogger) Fmt(f string, v...interface{}) {
-  log.Println(fmt.Sprintf(f, v...))
+	log.Printf(f, v...)
 }
