@@ -20,15 +20,26 @@ b.HttpJumpMapping("/", "/brick/ui")
 // static page service, auto use buildin resources
 b.StaticPage("/brick/ui", "www")
 
-// start http server
-b.StartHttpServer();
-
 // http service
 b.Service("/url/", func(h brick.Http) {})
 
 // Template with HTML
 b.Service("/url/", b.TemplatePage("www/index.xhtml", 
   func(h brick.Http) (interface{}, error) { return nil, nil })
+
+// close/shutdown when get signal
+go func() {
+  osSignals := make(chan os.Signal, 1)
+  signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
+  <-osSignals
+  // b.Close()
+  b.Shutdown(context.WithTimeout(context.TODO, 10 * time.Second))
+}()
+
+// start http server
+b.StartHttpServer();
+// https server
+b.StartHttpsServer(cert, key)
 ```
 
 ## Template
@@ -48,6 +59,12 @@ B.xhtml file:
 
 
 ## build static resource
+
+install node version >= 6.x, run:
+
+`npm install`
+
+copy `build.json` file to you project, and edit.
 
 Package static resources as go source code.
 

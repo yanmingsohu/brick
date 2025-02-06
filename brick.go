@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
@@ -186,7 +185,7 @@ func (b *Brick) defaultTemplateFunc() {
 }
 
 
-func (b *Brick) setTplFunc(name string, fn interface{})(error) {
+func (b *Brick) SetTplFunc(name string, fn interface{})(error) {
   if fn == nil {
     b.log.Error("Template Function not nil")
   }
@@ -215,6 +214,11 @@ func (b *Brick) Close() error {
 }
 
 
+func (b *Brick) Shutdown(ctx context.Context) error {
+	return b.serv.Shutdown(ctx)
+}
+
+
 //
 // 启用并返回事务对象
 //
@@ -230,7 +234,7 @@ func (h *Http) Session()(*sessions.Session) {
 // 普通 web 服务
 //
 func (b *Brick) Service(path string, h HttpHandler) {
-  b.log.Debug("Service", path)
+  b.log.Debug("Add Service", path)
   b.serveMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
     t1 := time.Now()
     hd := Http{ r, w, b, nil, make([]Shutdown, 0, 3), nil, "" }
@@ -299,7 +303,7 @@ func (b *Brick) GetCachedTemplate(fileName string)(*CachedTemplate, error) {
 
   if !modtime.Equal(cd.lastTime) {
     b.log.Info("Template change", fileName)
-    buf, errR := ioutil.ReadAll(file)
+    buf, errR := io.ReadAll(file)
     if errR != nil {
       return nil, errR
     }
