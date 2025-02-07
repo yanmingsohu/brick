@@ -18,7 +18,7 @@ b := brick.NewBrick(conf)
 b.HttpJumpMapping("/", "/brick/ui")
 
 // static page service, auto use buildin resources
-b.StaticPage("/brick/ui", "www")
+b.StaticPage("/brick/ui", "www", nil)
 
 // http service
 b.Service("/url/", func(h brick.Http) {})
@@ -68,7 +68,7 @@ copy `build.json` file to you project, and edit.
 
 Package static resources as go source code.
 
-`node build`
+`node [brick]/build`
 
 
 Static files in the compilation directory are go resource bundles
@@ -76,7 +76,7 @@ Read build.json in the current directory as the build configuration
 run: execute the script without parameters nodejs > v6
 
 The generated go code sets static resources into variables by accessing 
-`fm := brick.GetFileMapping()`.
+`b.StaticPage("/brick/ui", "www", file_mapping)`
 
 
 ###  Configuration instructions:
@@ -88,7 +88,8 @@ build.json file:
   "fileName": "resource_www.go",
   "wwwDir": "../www",
   "outDir": "./resource",
-  "varName": "fm"
+  "varName": "file_mapping",
+  "debug": false
 }
 ```
 

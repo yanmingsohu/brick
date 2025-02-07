@@ -8,7 +8,6 @@
 //    文件名是变量索引; 输出到 outDir/fileName 的 GO 源文件中,
 //    包名为 packageName; 通常在包的其他源文件中定义 varName 变量,
 //    变量类型是 map[string][]byte.
-//    不支持深层目录中的文件.
 //
 const zb        = require('zlib')
 const fs        = require('fs');
@@ -16,8 +15,8 @@ const pt        = require('path');
 const st        = require("stream");
 const CleanCSS  = require('clean-css');
 const htmlmin   = require('html-minifier');
-const colors    = require('colors');
-const babel     = require("babel-core");
+const babel     = require("@babel/core");
+const color     = require("colors")
 const cf        = require(pt.join(process.cwd(), "./build.json"));
 
 const html_min_opt = {
@@ -36,15 +35,12 @@ const js_babel_opt = {
 };
 
 const go_code = `
-//
-// 这是程序生成的资源文件
-//
 import (
-  "io/ioutil"
+  "io"
   "compress/gzip"
   "bytes"
   "log"
-  "github.com/yanmingsohu/brick"
+  "github.com/yanmingsohu/brick/v2"
 )
 
 func _unzip(input []byte) []byte {
@@ -53,7 +49,7 @@ func _unzip(input []byte) []byte {
     log.Println("Resource fail", err)
     return nil
   }
-  a, err := ioutil.ReadAll(r)
+  a, err := io.ReadAll(r)
   if err != nil {
     log.Println("Resource fail", err)
     return nil
@@ -67,8 +63,7 @@ func _unzname(i []byte) string {
 `
 
 var fullpath = pt.join(process.cwd(), cf.outDir, cf.fileName);
-var outfile = makeSource(fullpath, cf.varName);
-outfile.setPackage(cf.packageName);
+var outfile = makeSource(fullpath, cf.varName, cf.packageName, cf.debug);
 
 outfile.beginInit();
 buildDir([], pt.join(process.cwd(), cf.wwwDir), outfile, function() {
@@ -107,7 +102,7 @@ function buildDir(webbase, dir, outfile, on_end) {
 }
 
 
-function makeSource(outFile, varName) {
+function makeSource(outFile, varName, packageName, dbg) {
   var file = fs.openSync(outFile, 'w');
 
   return {
@@ -119,10 +114,19 @@ function makeSource(outFile, varName) {
   };
 
   function beginInit() {
+    fs.writeSync(file, "// generate by brick web static resource complie, ");
+    fs.writeSync(file, (new Date()).toUTCString());
+    fs.writeSync(file, "\n// === DO NOT === edit file.\n");
+    setPackage(packageName);
     fs.writeSync(file, go_code);
-    fs.writeSync(file, "\nfunc init() {\n");
+    defineVar()
+    fs.writeSync(file, "\nfunc init() {");
+  }
+
+  function defineVar() {
+    fs.writeSync(file, "\nvar ");
     fs.writeSync(file, varName);
-    fs.writeSync(file, ":= brick.GetFileMapping()")
+    fs.writeSync(file, " = brick.StaticResource{}\n")
   }
 
   function endInit() {
@@ -138,7 +142,9 @@ function makeSource(outFile, varName) {
   function localfile(path, name, over) {
     var zname = toByteArrString('[]byte', zb.gzipSync(name));
 
-    fs.writeSync(file, ['\n\n',
+    fs.writeSync(file, "\n\n// ")
+    fs.writeSync(file, name)
+    fs.writeSync(file, ['\n',
       varName, '[_unzname(', zname, ')] = ([]byte{'].join(''));
     
     var wstream = fs.createWriteStream(null, {
@@ -146,6 +152,7 @@ function makeSource(outFile, varName) {
       autoClose : false,
     });
 
+    console.log();
     var r = fs.createReadStream(path);
     switch (pt.extname(path)) {
       case ".html":
@@ -164,7 +171,7 @@ function makeSource(outFile, varName) {
         break;
 
       default:
-        console.log(path.white);
+        console.log(path.white, "\n");
         break;
     }
 
@@ -177,7 +184,7 @@ function makeSource(outFile, varName) {
     function end() {
       var logstr = toByteArrString('[]byte', zb.gzipSync("Web File: "+ name));
       fs.writeSync(file, '})');
-      fs.writeSync(file, ['\nlog.Println(_unzname(', logstr, '))'].join(''))
+      if (dbg) fs.writeSync(file, ['\nlog.Println(_unzname(', logstr, '))'].join(''))
       over();
     }
   }
@@ -215,10 +222,12 @@ function byteArrEncode() {
 
 function min_html() {
   let enc = create_collect_string(function(str, end) {
-    console.time("\tHTML min");
+    var label = "\tHTML min";
+    console.time(label);
     let result = htmlmin.minify(str, html_min_opt);
     this.push(result, 'utf8');
-    console.timeLog("\tHTML min", percent(result.length, str.length));
+    console.log("\tminify", percent(result.length, str.length));
+    console.timeEnd(label)
     end();
   });
   return enc;
@@ -227,16 +236,18 @@ function min_html() {
 
 function min_js() {
   let enc = create_collect_string(function(str, end) {
-    console.time("\tJS min");
+    var label = "\tJS min";
+    console.time(label);
     let result;
     try {
       result = babel.transform(str, js_babel_opt).code;
     } catch(err) {
-      console.error(err.stack);
+      console.error(err.message);
       result = str;
     }
     this.push(result, 'utf8');
-    console.timeLog("\tJS min", percent(result.length, str.length));
+    console.log("\tminify", percent(result.length, str.length));
+    console.timeEnd(label)
     end();
   });
   return enc;
@@ -245,10 +256,12 @@ function min_js() {
 
 function min_css() {
   let enc = create_collect_string(function(str, end) {
-    console.time("\tCSS min")
+    var label = "\tCSS min";
+    console.time(label);
     var result = new CleanCSS(css_min_opt).minify(str);
     this.push(result.styles, 'utf8');
-    console.timeLog("\tCSS min", percent(result.styles.length, str.length));
+    console.log("\tminify", percent(result.styles.length, str.length));
+    console.timeEnd(label);
     end();
   });
   return enc;
@@ -284,7 +297,7 @@ function js_min_for_html(text, inline) {
   try {
     return babel.transform(code, js_babel_opt).code;
   } catch(err) {
-    console.error(err.stack);
+    console.error(err.message);
     return text;
   }
 }

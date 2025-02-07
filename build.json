@@ -3,5 +3,6 @@
   "fileName": "resource_www.go",
   "wwwDir": "../www",
   "outDir": ".",
-  "varName": "file_mapping"
+  "varName": "file_mapping",
+  "debug": false
 }

@@ -73,11 +73,14 @@ type Http struct {
   L  string
 }
 
+type StaticResource map[string][]byte
+
 type StaticPage struct {
   BaseUrl    string // web 服务的路径前缀
   FilePath   string // 本地文件路径
   localFS    http.Handler
   log        Logger
+	mapping    StaticResource
 }
 
 //
@@ -118,9 +121,6 @@ type HttpHandler func(*Http) error
 // 通常记录日志并向客户端输出错误信息
 //
 type HttpErrorHandler func(hd *Http, err interface{})
-
-// 包内全局变量, 使用 build.js 构建的代码将设置这个变量
-var file_mapping = make(map[string][]byte)
 
 
 type Config struct {
@@ -373,7 +373,7 @@ func (b *Brick) HttpJumpMapping(location string, to string) {
 //
 // 设置静态文件服务, 必须在该方法之前设置 log 否则无效
 //
-func (b *Brick) StaticPage(baseURL string, fileDir string) {
+func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
   if (!strings.HasSuffix(baseURL, "/")) {
     baseURL = baseURL + "/"
   }
@@ -383,6 +383,7 @@ func (b *Brick) StaticPage(baseURL string, fileDir string) {
 		FilePath	: fileDir,
     localFS   : local,
     log       : b.log,
+		mapping   : res,
   };
   b.serveMux.Handle(baseURL, &staticPage);
 }
@@ -604,19 +605,22 @@ func (h *Http) Ctx() context.Context {
 
 func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
   fileName := r.URL.Path[len(p.BaseUrl):]
-  begin    := time.Now()  
-  content, has := file_mapping[fileName]
+  begin    := time.Now()
 
-  if has {
-    // log.Println("Prog Resource", fileName)
-    w.Header().Set("Content-Type", getMimeType(fileName))
-		w.Header().Set("Content-Encoding", "gzip")
-    w.WriteHeader(200)
-    w.Write(content)
-    return;
-  } else {
-    p.localFS.ServeHTTP(w, r)
-  }
+	if p.mapping != nil {
+  	content, has := p.mapping[fileName]
+		if has {
+			// log.Println("Prog Resource", fileName)
+			w.Header().Set("Content-Type", getMimeType(fileName))
+			w.Header().Set("Content-Encoding", "gzip")
+			w.WriteHeader(200)
+			w.Write(content)
+			serviceLog(p.log, begin, r, "[mapping]");
+			return;
+		}
+	}
+
+	p.localFS.ServeHTTP(w, r)
   serviceLog(p.log, begin, r, "");
 }
 
@@ -660,11 +664,6 @@ func LastSlice(str string, maxLen int, prefix string) string {
     return string(n)
   }
   return str
-}
-
-
-func GetFileMapping() map[string][]byte {
-	return file_mapping
 }
 
 
