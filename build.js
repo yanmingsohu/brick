@@ -34,7 +34,7 @@ const js_babel_opt = {
   // plugins: ['babel-minify'],
 };
 
-const go_code = `
+const import_code = `
 import (
   "io"
   "compress/gzip"
@@ -42,7 +42,9 @@ import (
   "log"
   "github.com/yanmingsohu/brick/v2"
 )
+`
 
+const helper_code = `
 func _unzip(input []byte) []byte {
   r, err := gzip.NewReader(bytes.NewBuffer(input))
   if err != nil {
@@ -65,9 +67,11 @@ func _unzname(i []byte) string {
 var fullpath = pt.join(process.cwd(), cf.outDir, cf.fileName);
 var outfile = makeSource(fullpath, cf.varName, cf.packageName, cf.debug);
 
-outfile.beginInit();
+outfile.fileHeader();
+outfile.beginFunc("init");
 buildDir([], pt.join(process.cwd(), cf.wwwDir), outfile, function() {
-  outfile.endInit();
+  outfile.endFunc();
+  outfile.writeHelper();
   console.log("\nDone", outfile.fileName);
 });
 
@@ -109,27 +113,41 @@ function makeSource(outFile, varName, packageName, dbg) {
     fileName   : outFile,
     setPackage : setPackage,
     localfile  : localfile,
-    beginInit  : beginInit,
-    endInit    : endInit,
+    fileHeader : fileHeader,
+    beginFunc  : beginFunc,
+    endFunc    : endFunc,
+    writeHelper: writeHelper,
   };
 
-  function beginInit() {
+  function fileHeader() {
     fs.writeSync(file, "// generate by brick web static resource complie, ");
     fs.writeSync(file, (new Date()).toUTCString());
     fs.writeSync(file, "\n// === DO NOT === edit file.\n");
     setPackage(packageName);
-    fs.writeSync(file, go_code);
+    fs.writeSync(file, import_code);
     defineVar()
-    fs.writeSync(file, "\nfunc init() {");
+  }
+
+  function writeHelper() {
+    fs.writeSync(file, '\n');
+    fs.writeSync(file, helper_code);
+  }
+
+  function beginFunc(name) {
+    fs.writeSync(file, "\nfunc ");
+    fs.writeSync(file, name);
+    fs.writeSync(file, "() {");
   }
 
   function defineVar() {
-    fs.writeSync(file, "\nvar ");
+    fs.writeSync(file, '\n// b.StaticPage("/url", "./localpath", ');
+    fs.writeSync(file, varName);
+    fs.writeSync(file, ')\nvar ');
     fs.writeSync(file, varName);
     fs.writeSync(file, " = brick.StaticResource{}\n")
   }
 
-  function endInit() {
+  function endFunc() {
     fs.writeSync(file, "\n}");
   }
 
@@ -171,7 +189,7 @@ function makeSource(outFile, varName, packageName, dbg) {
         break;
 
       default:
-        console.log(path.white, "\n");
+        console.log(path.white, color.gray("\n\t< not minify >"));
         break;
     }
 
@@ -180,6 +198,7 @@ function makeSource(outFile, varName, packageName, dbg) {
       .pipe(wstream);
 
     wstream.on('finish', end);
+
       
     function end() {
       var logstr = toByteArrString('[]byte', zb.gzipSync("Web File: "+ name));
@@ -285,7 +304,7 @@ function create_collect_string(cb) {
 
 
 function percent(a, b) {
-  return ((a / b)*100).toFixed(1) +'%';
+  return ((a / b)*100).toFixed(1) +'%, '+ (a/1024).toFixed(2) +"Kbytes";
 }
 
 
