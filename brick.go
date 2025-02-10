@@ -123,10 +123,14 @@ type HttpHandler func(*Http) error
 type HttpErrorHandler func(hd *Http, err interface{})
 
 
+type Database = sessions.Database
+
+
 type Config struct {
 	HttpPort int
 	SessionExp time.Duration
 	CookieName string
+	SessionDB Database
 }
 
 //
@@ -163,6 +167,10 @@ func NewBrick(conf Config) *Brick {
       Decode: secureCookie.Decode,
     }),
   }
+
+	if conf.SessionDB != nil {
+		b.sess.UseDatabase(conf.SessionDB)
+	}
 
   b.defaultTemplateFunc()
   return &b;

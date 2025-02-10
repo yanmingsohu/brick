@@ -10,9 +10,13 @@ conf := brick.Config{
   HttpPort  : 7077, 
   SessionExp: 1 * time.Hour, 
   CookieName: "testserver",
+  SessionDB: nil,
 }
 // HTTP post 7077
 b := brick.NewBrick(conf)
+
+// print call statck when error
+b.Debug = true
 
 // Redirect '/' to "/brick/ui"
 b.HttpJumpMapping("/", "/brick/ui")
@@ -21,7 +25,7 @@ b.HttpJumpMapping("/", "/brick/ui")
 b.StaticPage("/brick/ui", "www", nil)
 
 // http service
-b.Service("/url/", func(h brick.Http) {})
+b.Service("/url/", func(h brick.Http) error { return nil })
 
 // Template with HTML
 b.Service("/url/", b.TemplatePage("www/index.xhtml", 
