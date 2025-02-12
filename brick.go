@@ -124,6 +124,7 @@ type HttpErrorHandler func(hd *Http, err interface{})
 
 
 type Database = sessions.Database
+type LifeTime = sessions.LifeTime
 
 
 type Config struct {
@@ -242,7 +243,10 @@ func (h *Http) Session()(*sessions.Session) {
 // 普通 web 服务
 //
 func (b *Brick) Service(path string, h HttpHandler) {
-  b.log.Debug("Add Service", path)
+  if b.Debug {
+		b.log.Debug("Add Service", path)
+	}
+	
   b.serveMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
     t1 := time.Now()
     hd := Http{ r, w, b, nil, make([]Shutdown, 0, 3), nil, "" }
@@ -264,7 +268,9 @@ func (b *Brick) Service(path string, h HttpHandler) {
     }
     hd.shutdown()
 
-    serviceLog(b.log, t1, r, hd.L);
+		if b.Debug {
+    	serviceLog(b.log, t1, r, hd.L)
+		}
   })
 }
 
