@@ -25,7 +25,12 @@ b.HttpJumpMapping("/", "/brick/ui")
 b.StaticPage("/brick/ui", "www", nil)
 
 // http service
-b.Service("/url/", func(h brick.Http) error { return nil })
+b.Service("/url/", func(h brick.Http) error { 
+  if !h.Has("id", "text") {
+    return errors.New("lost paramaters")
+  }
+  return nil
+})
 
 // Template with HTML
 b.Service("/url/", b.TemplatePage("www/index.xhtml", 

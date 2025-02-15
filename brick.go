@@ -458,6 +458,17 @@ func (h* Http) Gets(name string) []string {
 }
 
 
+func (h *Http) Has(name ...string) bool {
+	h.init_query()
+	for _,n := range name {
+		if !h.q.Has(n) {
+			return false
+		}
+	}
+	return true
+}
+
+
 //
 // 输出错误字符串, 该方法不影响程序流程
 //
