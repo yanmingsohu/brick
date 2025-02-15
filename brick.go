@@ -469,6 +469,36 @@ func (h *Http) Has(name ...string) bool {
 }
 
 
+func (h *Http) GetF(name string) float64 {
+	h.init_query()
+	s := h.q.Get(name)
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		log.Panicln("bad paramater:", name, "not float:", s)
+	}
+	return f
+}
+
+
+func (h *Http) GetI(name string) int64 {
+	h.init_query()
+	s := h.q.Get(name)
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		log.Panicln("bad paramater:", name, "not integer:", s)
+	}
+	return i
+}
+
+
+func (h *Http) GetB(name string) bool {
+	h.init_query()
+	s := h.q.Get(name)
+	b, _ := strconv.ParseBool(s)
+	return b
+}
+
+
 //
 // 输出错误字符串, 该方法不影响程序流程
 //

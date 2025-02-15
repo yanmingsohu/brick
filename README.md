@@ -1,6 +1,8 @@
 # Brick
 
-A web application development framework with basic functions
+A web application development framework with basic functions.
+
+Compile web static files into executable programs through the static resource compiler to achieve single file deployment.
 
 
 ## Basic use
@@ -26,9 +28,15 @@ b.StaticPage("/brick/ui", "www", nil)
 
 // http service
 b.Service("/url/", func(h brick.Http) error { 
-  if !h.Has("id", "text") {
+  if !h.Has("id", "text", "money") {
     return errors.New("lost paramaters")
   }
+  // paramater will from GET(url) or POST(body)
+  // throw Error when money is not number
+  money := h.GetF("money")
+  i := h.GetI("index")
+  // never throw error, invaild bool string return `false`
+  is := h.GetB("isMe")
   return nil
 })
 
