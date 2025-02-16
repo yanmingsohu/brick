@@ -34,14 +34,9 @@ type Shutdown interface {
 }
 
 type Logger interface {
-  Debug(v...interface{})
-  Info(v...interface{})
-  Warn(v...interface{})
-  Error(v...interface{})
-  Fmt(format string, v...interface{})
-}
-
-type defaultLogger struct {
+  Println(v ...any)
+	Printf(format string, v ...any)
+	Panicln(v ...any)
 }
 
 //
@@ -81,6 +76,7 @@ type StaticPage struct {
   localFS    http.Handler
   log        Logger
 	mapping    StaticResource
+	debug      *bool
 }
 
 //
@@ -132,6 +128,7 @@ type Config struct {
 	SessionExp time.Duration
 	CookieName string
 	SessionDB Database
+	Log Logger
 }
 
 //
@@ -151,13 +148,18 @@ func NewBrick(conf Config) *Brick {
 		hname += hport
 	}
 
+	logg := conf.Log
+	if logg == nil {
+		logg = log.New(os.Stdout, "HT.", log.LstdFlags | log.Lmsgprefix)
+	}
+
   b := Brick{ 
     addr       			: hname,
     secureCookie    : secureCookie,
     cachedTemplate  : make(map[string]*CachedTemplate),
     serveMux        : mux,
     funcMap         : template.FuncMap{},
-    log             : &defaultLogger{},
+    log             : logg,
     errorHandle     : defaultErrorHandle,
 		serv 						: http.Server{Addr: hport, Handler: mux},
   
@@ -196,7 +198,7 @@ func (b *Brick) defaultTemplateFunc() {
 
 func (b *Brick) SetTplFunc(name string, fn interface{})(error) {
   if fn == nil {
-    b.log.Error("Template Function not nil")
+    b.log.Println("ERR. Template Function not nil")
   }
   b.funcMap[name] = fn
   return nil
@@ -207,13 +209,13 @@ func (b *Brick) SetTplFunc(name string, fn interface{})(error) {
 // 启动服务, 该方法会阻塞
 //
 func (b *Brick) StartHttpServer() error {
-  b.log.Info("Server on http://"+ b.addr)
+  b.log.Println("Server on http://"+ b.addr)
 	return b.serv.ListenAndServe()
 }
 
 
 func (b *Brick) StartHttpsServer(cert string, key string) error {
-  b.log.Info("Server on https://"+ b.addr)
+  b.log.Println("Server on https://"+ b.addr)
 	return b.serv.ListenAndServeTLS(cert, key)
 }
 
@@ -244,7 +246,7 @@ func (h *Http) Session()(*sessions.Session) {
 //
 func (b *Brick) Service(path string, h HttpHandler) {
   if b.Debug {
-		b.log.Debug("Add Service", path)
+		b.log.Println("Add Service", path)
 	}
 	
   b.serveMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +258,7 @@ func (b *Brick) Service(path string, h HttpHandler) {
         if b.Debug {
           var buf [4096]byte
           n := runtime.Stack(buf[:], false)
-          b.log.Error("==>", err, string(buf[:n]))
+          b.log.Println("==>", err, string(buf[:n]))
         }
 
         b.errorHandle(&hd, err)
@@ -284,7 +286,7 @@ func defaultErrorHandle(hd *Http, err interface{}) {
   hd.W.WriteHeader(500)
   hd.WriteStr(`<p>Service Error</p>`)
   fmt.Fprintf(hd.W, `<p>%s</p>`, err)
-  hd.b.log.Error("Error:", err)
+  hd.b.log.Println("Error:", err)
 }
 
 
@@ -316,7 +318,7 @@ func (b *Brick) GetCachedTemplate(fileName string)(*CachedTemplate, error) {
   }
 
   if !modtime.Equal(cd.lastTime) {
-    b.log.Info("Template change", fileName)
+    b.log.Println("Template change", fileName)
     buf, errR := io.ReadAll(file)
     if errR != nil {
       return nil, errR
@@ -340,7 +342,9 @@ func (b *Brick) GetCachedTemplate(fileName string)(*CachedTemplate, error) {
 //
 func (b *Brick) TemplatePage(
     templateFile string, handle TemplateHandler)(HttpHandler) {
-  b.log.Debug("Template", templateFile)
+	if b.Debug {
+   	b.log.Println("Template", templateFile)
+	}
   dir := filepath.Dir(templateFile)
 
   return func(hd *Http) error {
@@ -398,6 +402,7 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
     localFS   : local,
     log       : b.log,
 		mapping   : res,
+		debug     : &b.Debug,
   };
   b.serveMux.Handle(baseURL, &staticPage);
 }
@@ -474,7 +479,7 @@ func (h *Http) GetF(name string) float64 {
 	s := h.q.Get(name)
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		log.Panicln("bad paramater:", name, "not float:", s)
+		h.b.log.Panicln("bad paramater:", name, "not float:", s)
 	}
 	return f
 }
@@ -485,7 +490,7 @@ func (h *Http) GetI(name string) int64 {
 	s := h.q.Get(name)
 	i, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		log.Panicln("bad paramater:", name, "not integer:", s)
+		h.b.log.Panicln("bad paramater:", name, "not integer:", s)
 	}
 	return i
 }
@@ -503,7 +508,7 @@ func (h *Http) GetB(name string) bool {
 // 输出错误字符串, 该方法不影响程序流程
 //
 func (h *Http) WriteErr(e error) {
-  h.b.log.Error(e)
+  h.b.log.Println("ERR.", e)
   h.W.Write([]byte(e.Error()))
 }
 
@@ -670,13 +675,18 @@ func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Encoding", "gzip")
 			w.WriteHeader(200)
 			w.Write(content)
-			serviceLog(p.log, begin, r, "[mapping]");
+			
+			if *p.debug {
+				serviceLog(p.log, begin, r, "[mapping]");
+			}
 			return;
 		}
 	}
 
 	p.localFS.ServeHTTP(w, r)
-  serviceLog(p.log, begin, r, "");
+  if *p.debug { 
+		serviceLog(p.log, begin, r, ""); 
+	}
 }
 
 
@@ -723,33 +733,9 @@ func LastSlice(str string, maxLen int, prefix string) string {
 
 
 func serviceLog(log Logger, begin time.Time, r *http.Request, extLog string) {
-  log.Info(fmt.Sprintf("%4s|%12s|%s %s", 
+  log.Printf("%4s|%12s|%s %s", 
         LastSlice(r.Method, 4, ""), 
         time.Since(begin).String(), 
         r.URL.Path,
-        extLog))
-}
-
-
-func (d *defaultLogger) Debug(v...interface{}) {
-  log.Println(v...)
-}
-
-
-func (d *defaultLogger) Info(v...interface{}) {
-  log.Println(v...)
-}
-
-
-func (d *defaultLogger) Warn(v...interface{}) {
-  log.Println(v...)
-}
-
-
-func (d *defaultLogger) Error(v...interface{}) {
-  log.Println(v...)
-}
-
-func (d *defaultLogger) Fmt(f string, v...interface{}) {
-	log.Printf(f, v...)
+        extLog)
 }
