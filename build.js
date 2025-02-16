@@ -108,6 +108,7 @@ function buildDir(webbase, dir, outfile, on_end) {
 
 function makeSource(outFile, varName, packageName, dbg) {
   var file = fs.openSync(outFile, 'w');
+  var count = 0;
 
   return {
     fileName   : outFile,
@@ -170,41 +171,63 @@ function makeSource(outFile, varName, packageName, dbg) {
       autoClose : false,
     });
 
-    console.log();
+    var stat = { gzip : 0, total: 0, min: 0, num: ++count,
+                 minname: null, color:null, st:Date.now(),
+                 path : path }
+    
     var r = fs.createReadStream(path);
     switch (pt.extname(path)) {
       case ".html":
-        console.log(path.green);
-        r = r.pipe(min_html());
+        stat.color = 'green'; 
+        stat.minname = 'HTML';
+        // console.log(path.green);
+        r = r.pipe(min_html(stat));
         break;
 
       case ".js":
-        console.log(path.yellow);
-        r = r.pipe(min_js());
+        stat.color = 'yellow';
+        stat.minname = 'JS';
+        // console.log(path.yellow);
+        r = r.pipe(min_js(stat));
         break;
 
       case ".css":
-        console.log(path.cyan);
-        r = r.pipe(min_css());
+        stat.color = 'cyan';
+        stat.minname = 'CSS';
+        // console.log(path.cyan);
+        r = r.pipe(min_css(stat));
         break;
 
       default:
-        console.log(path.white, color.gray("\n\t< not minify >"));
+        stat.color = 'gray';
+        stat.minname = "< not minify >"
+        stat.total = fs.statSync(path).size;
+        // console.log(path.white, color.gray("\n\t< not minify >"));
         break;
     }
 
     r.pipe(zb.createGzip())
-      .pipe(byteArrEncode(end))
+      .pipe(byteArrEncode(stat))
       .pipe(wstream);
 
     wstream.on('finish', end);
 
       
     function end() {
+      // console.log("\tgzip:", stat.bytes, "bytes");
       var logstr = toByteArrString('[]byte', zb.gzipSync("Web File: "+ name));
       fs.writeSync(file, '})');
       if (dbg) fs.writeSync(file, ['\nlog.Println(_unzname(', logstr, '))'].join(''))
+      showStat();
       over();
+    }
+
+    function showStat() {
+      var out = [ stat.num, ') ', path,
+        "\n\t", stat.minname, ' ', percent(stat.min, stat.total),
+        "; gzip: ", percent(stat.gzip, stat.total), 
+        "; use: ", Date.now() - stat.st, "ms"].join('');
+      console.log(out[stat.color])
     }
   }
 }
@@ -224,9 +247,10 @@ function toByteArrString(prefix, buf) {
 //
 // 把二进制写出为 go 语言字节数组
 //
-function byteArrEncode() {
+function byteArrEncode(stat) {
   var enc = new st.Transform();
   enc._transform = function(chunk, encoding, callback) {
+    stat.gzip += chunk.length;
     for (var i=0; i<chunk.length; ++i) {
       var b = chunk[i];
       this.push(b.toString());
@@ -239,24 +263,20 @@ function byteArrEncode() {
 }
 
 
-function min_html() {
+function min_html(stat) {
   let enc = create_collect_string(function(str, end) {
-    var label = "\tHTML min";
-    console.time(label);
     let result = htmlmin.minify(str, html_min_opt);
     this.push(result, 'utf8');
-    console.log("\tminify", percent(result.length, str.length));
-    console.timeEnd(label)
+    stat.total = str.length;
+    stat.min = result.length;
     end();
   });
   return enc;
 }
 
 
-function min_js() {
+function min_js(stat) {
   let enc = create_collect_string(function(str, end) {
-    var label = "\tJS min";
-    console.time(label);
     let result;
     try {
       result = babel.transform(str, js_babel_opt).code;
@@ -265,22 +285,20 @@ function min_js() {
       result = str;
     }
     this.push(result, 'utf8');
-    console.log("\tminify", percent(result.length, str.length));
-    console.timeEnd(label)
+    stat.total = str.length;
+    stat.min = result.length;
     end();
   });
   return enc;
 }
 
 
-function min_css() {
+function min_css(stat) {
   let enc = create_collect_string(function(str, end) {
-    var label = "\tCSS min";
-    console.time(label);
     var result = new CleanCSS(css_min_opt).minify(str);
     this.push(result.styles, 'utf8');
-    console.log("\tminify", percent(result.styles.length, str.length));
-    console.timeEnd(label);
+    stat.total = str.length;
+    stat.min = result.styles.length;
     end();
   });
   return enc;
@@ -304,6 +322,7 @@ function create_collect_string(cb) {
 
 
 function percent(a, b) {
+  if (a <= 0) return "";
   return ((a / b)*100).toFixed(1) +'%, '+ (a/1024).toFixed(2) +"Kbytes";
 }
 
