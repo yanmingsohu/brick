@@ -129,15 +129,31 @@ type Config struct {
 	CookieName string
 	SessionDB Database
 	Log Logger
+	SessionHashKey []byte
+	SessionBlockKey []byte
+}
+
+
+func (c *Config) DefaultValue() {
+	if c.SessionHashKey == nil {
+		c.SessionHashKey = securecookie.GenerateRandomKey(32)
+	}
+	if c.SessionBlockKey == nil {
+		c.SessionBlockKey = securecookie.GenerateRandomKey(16)
+	}
+	if c.Log == nil {
+		c.Log = log.New(os.Stdout, "HT.", log.LstdFlags | log.Lmsgprefix)
+	}
+	if c.SessionExp <= 0 {
+		c.SessionExp = 2 * time.Hour
+	}
 }
 
 //
 // 创建 Brick 的实例, session 对象在 sessionExp 后无效.
 //
 func NewBrick(conf Config) *Brick {
-  secureCookie := securecookie.New(
-			securecookie.GenerateRandomKey(32), 
-			securecookie.GenerateRandomKey(16))
+	conf.DefaultValue()
 
 	mux := http.NewServeMux()
 	hport := ":"+ strconv.Itoa(conf.HttpPort);
@@ -148,10 +164,7 @@ func NewBrick(conf Config) *Brick {
 		hname += hport
 	}
 
-	logg := conf.Log
-	if logg == nil {
-		logg = log.New(os.Stdout, "HT.", log.LstdFlags | log.Lmsgprefix)
-	}
+	secureCookie := securecookie.New(conf.SessionHashKey, conf.SessionBlockKey)
 
   b := Brick{ 
     addr       			: hname,
@@ -159,7 +172,7 @@ func NewBrick(conf Config) *Brick {
     cachedTemplate  : make(map[string]*CachedTemplate),
     serveMux        : mux,
     funcMap         : template.FuncMap{},
-    log             : logg,
+    log             : conf.Log,
     errorHandle     : defaultErrorHandle,
 		serv 						: http.Server{Addr: hport, Handler: mux},
   
