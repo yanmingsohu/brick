@@ -676,6 +676,14 @@ func (h *Http) Ctx() context.Context {
 }
 
 
+func (b *Http) SetDownloadFilename(s string) {
+	filename := url.QueryEscape(s)
+	b.W.Header().Add("Content-Disposition", 
+		"attachment; filename=\""+ filename +"\";"+
+		"filename*=utf-8''"+ filename)
+}
+
+
 func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
   fileName := r.URL.Path[len(p.BaseUrl):]
   begin    := time.Now()
