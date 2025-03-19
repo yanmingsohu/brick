@@ -23,6 +23,12 @@ import (
 	"github.com/kataras/go-sessions"
 )
 
+var (
+	ErrLogNullPoint = errors.New("null log point")
+	ErrBindOutParam = errors.New("not out bind param")
+	ErrBindNotFix = errors.New("Not found 'fixBase' in URL")
+)
+
 type Msg struct {
   Code int          `json:"code"`
   Msg  string       `json:"msg"`
@@ -426,16 +432,9 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
 //
 func (b *Brick) SetLogger(log Logger) {
   if log == nil {
-    panic(errors.New("log is null"))
+    panic(ErrLogNullPoint)
   }
   b.log = log
-}
-
-
-func wjson(w http.ResponseWriter, m interface{}) {
-  w.Header().Set("Content-Type", "application/json; charset=utf-8")
-  enc := json.NewEncoder(w)
-  enc.Encode(m)
 }
 
 
@@ -443,7 +442,16 @@ func wjson(w http.ResponseWriter, m interface{}) {
 // 返回 json 字符串
 //
 func (h *Http) Json(m interface{}) {
-  wjson(h.W, m)
+  h.W.Header().Set("Content-Type", "application/json; charset=utf-8")
+  enc := json.NewEncoder(h.W)
+	if err := enc.Encode(m); err != nil {
+		h.W.WriteHeader(500)
+		h.W.Write([]byte("server error 500"))
+		if h.b.Debug {
+			h.W.Write([]byte(err.Error()))
+		}
+		h.b.log.Println("http write json fail:", err)
+	}
 }
 
 
@@ -557,7 +565,7 @@ func (h *Http) URLParam(fixBase string, out ...*string) int {
   ui := 0
 
   if olen <= 0 {
-    panic(errors.New("not out bind param"))
+    panic(ErrBindOutParam)
   }
 
   for ; ui < ulen; ui++ {
@@ -569,7 +577,7 @@ func (h *Http) URLParam(fixBase string, out ...*string) int {
 
   ucount := ulen - ui
   if ucount == 0 {
-    panic(errors.New("Not found '"+ fixBase +"' in URL"))
+    panic(ErrBindNotFix)
   }
 
   oi := 0
