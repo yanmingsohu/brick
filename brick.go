@@ -26,7 +26,7 @@ import (
 var (
 	ErrLogNullPoint = errors.New("null log point")
 	ErrBindOutParam = errors.New("not out bind param")
-	ErrBindNotFix = errors.New("Not found 'fixBase' in URL")
+	ErrBindNotFix = errors.New("not found 'fixBase' in URL")
 )
 
 type Msg struct {
@@ -61,6 +61,7 @@ type Brick struct {
   errorHandle     HttpErrorHandler
   Debug           bool
 	serv            http.Server
+	staticCacheSec  int
 } 
 
 type Http struct {
@@ -83,6 +84,7 @@ type StaticPage struct {
   log        Logger
 	mapping    StaticResource
 	debug      *bool
+	cacheSec   int
 }
 
 //
@@ -137,6 +139,8 @@ type Config struct {
 	Log Logger
 	SessionHashKey []byte
 	SessionBlockKey []byte
+	// 如果缓存时间 == 0, 则文件一直被缓存
+	StaticCacheSeconds int
 }
 
 
@@ -181,6 +185,7 @@ func NewBrick(conf Config) *Brick {
     log             : conf.Log,
     errorHandle     : defaultErrorHandle,
 		serv 						: http.Server{Addr: hport, Handler: mux},
+		staticCacheSec  : conf.StaticCacheSeconds,
   
     sess: sessions.New(sessions.Config{
       Cookie: conf.CookieName,
@@ -284,6 +289,7 @@ func (b *Brick) Service(path string, h HttpHandler) {
       }
     }()
     
+		w.Header().Add("Cache-Control", "no-store")
     if err := h(&hd); err != nil {
       b.errorHandle(&hd, err)
     }
@@ -367,6 +373,8 @@ func (b *Brick) TemplatePage(
   dir := filepath.Dir(templateFile)
 
   return func(hd *Http) error {
+		hd.W.Header().Add("Cache-Control", "private")
+		hd.W.Header().Add("Cache-Control", "max-age="+ strconv.Itoa(b.staticCacheSec))
     hd.W.Header().Set("Content-Type", "text/html; charset=utf-8")
     ct, err := b.GetCachedTemplate(templateFile)
     if err != nil {
@@ -398,6 +406,7 @@ func (b *Brick) TemplatePage(
 //
 func (b *Brick) HttpJumpMapping(location string, to string) {
   b.serveMux.HandleFunc(location, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Cache-Control", "no-store")
     if r.Method == "HEAD" {
       w.WriteHeader(405)
       return
@@ -422,6 +431,7 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
     log       : b.log,
 		mapping   : res,
 		debug     : &b.Debug,
+		cacheSec  : b.staticCacheSec,
   };
   b.serveMux.Handle(baseURL, &staticPage);
 }
@@ -654,7 +664,7 @@ func (h *Http) GetAcceptLanguage()(string) {
 func (h *Http) CacheTime(d time.Duration) {
   var cc string
   if d <= 0 {
-    cc = "no-cache"
+    cc = "no-store"
   } else {
     cc = "max-age="+ strconv.FormatFloat(d.Seconds(), 'f', 0, 64)
   }
@@ -700,6 +710,7 @@ func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
   	content, has := p.mapping[fileName]
 		if has {
 			// log.Println("Prog Resource", fileName)
+			w.Header().Add("Cache-Control", "public, max-age="+ strconv.Itoa(p.cacheSec))
 			w.Header().Set("Content-Type", getMimeType(fileName))
 			w.Header().Set("Content-Encoding", "gzip")
 			w.WriteHeader(200)
@@ -712,6 +723,7 @@ func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Add("Cache-Control", "no-cache")
 	p.localFS.ServeHTTP(w, r)
   if *p.debug { 
 		serviceLog(p.log, begin, r, ""); 
