@@ -147,6 +147,13 @@ type Config struct {
 	// 如果缓存时间 == 0, 则文件一直被缓存
 	StaticCacheSeconds int
 	ErrorHandle HttpErrorHandler
+	ListenerAddr string
+	FunctionMap template.FuncMap
+}
+
+
+func (c *Config) GetPortStr() string {
+	return ":"+ strconv.Itoa(c.HttpPort);
 }
 
 
@@ -163,6 +170,20 @@ func (c *Config) DefaultValue() {
 	if c.SessionExp <= 0 {
 		c.SessionExp = 2 * time.Hour
 	}
+	if c.ErrorHandle == nil {
+		c.ErrorHandle = defaultErrorHandle
+	}
+	if c.ListenerAddr == "" {
+		hname, err := os.Hostname()
+		if err != nil {
+			c.ListenerAddr = "localhost"+ c.GetPortStr()
+		} else {
+			c.ListenerAddr = hname + c.GetPortStr()
+		}
+	}
+	if c.FunctionMap == nil {
+		c.FunctionMap = template.FuncMap{}
+	}
 }
 
 //
@@ -172,29 +193,17 @@ func NewBrick(conf Config) *Brick {
 	conf.DefaultValue()
 
 	mux := http.NewServeMux()
-	hport := ":"+ strconv.Itoa(conf.HttpPort);
-	hname, err := os.Hostname()
-	if err != nil {
-		hname = "localhost:"+ hport
-	} else {
-		hname += hport
-	}
-
 	secureCookie := securecookie.New(conf.SessionHashKey, conf.SessionBlockKey)
-	eh := conf.ErrorHandle
-	if eh == nil {
-		eh = defaultErrorHandle
-	}
 
   b := Brick{ 
-    addr       			: hname,
+    addr       			: conf.ListenerAddr,
     secureCookie    : secureCookie,
     cachedTemplate  : make(map[string]*CachedTemplate),
     serveMux        : mux,
-    funcMap         : template.FuncMap{},
+    funcMap         : conf.FunctionMap,
     log             : conf.Log,
-    errorHandle     : eh,
-		serv 						: http.Server{Addr: hport, Handler: mux},
+    errorHandle     : conf.ErrorHandle,
+		serv 						: http.Server{Addr: conf.GetPortStr(), Handler: mux},
 		staticCacheSec  : conf.StaticCacheSeconds,
   
     sess: sessions.New(sessions.Config{
@@ -227,15 +236,6 @@ func (b *Brick) defaultTemplateFunc() {
     }
     return "", nil
   }
-}
-
-
-func (b *Brick) SetTplFunc(name string, fn interface{})(error) {
-  if fn == nil {
-    b.log.Println("ERR. Template Function not nil")
-  }
-  b.funcMap[name] = fn
-  return nil
 }
 
 
@@ -432,7 +432,7 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
   local := http.StripPrefix(baseURL, http.FileServer(http.Dir(fileDir)));
 
 	if b.errorHandle != nil {
-		local = &WrapErrorHandler{ local, b.errorHandle, b, nil }
+		local = &WrapErrorHandler{ local, b, nil }
 	}
 
   staticPage := StaticPage {
@@ -450,7 +450,6 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
 
 type WrapErrorHandler struct {
 	src http.Handler
-	eh  HttpErrorHandler
 	b   *Brick
 	http.ResponseWriter
 }
@@ -463,7 +462,7 @@ func (w *WrapErrorHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request
 	if _resp.haserr != 0 {
 		err := HttpError{ _resp.haserr, errors.New(string(_resp.errmsg)) }
 		hd := Http{ req, resp, w.b, nil, nil, nil, "" }
-		w.eh(&hd, err)
+		w.b.errorHandle(&hd, err)
 	}
 }
 
