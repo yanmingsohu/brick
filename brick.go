@@ -35,6 +35,11 @@ type Msg struct {
   Data interface{}  `json:"data"`
 }
 
+type HttpError struct {
+	Code int
+	error
+}
+
 type Shutdown interface {
   Close()
 }
@@ -141,6 +146,7 @@ type Config struct {
 	SessionBlockKey []byte
 	// 如果缓存时间 == 0, 则文件一直被缓存
 	StaticCacheSeconds int
+	ErrorHandle HttpErrorHandler
 }
 
 
@@ -175,6 +181,10 @@ func NewBrick(conf Config) *Brick {
 	}
 
 	secureCookie := securecookie.New(conf.SessionHashKey, conf.SessionBlockKey)
+	eh := conf.ErrorHandle
+	if eh == nil {
+		eh = defaultErrorHandle
+	}
 
   b := Brick{ 
     addr       			: hname,
@@ -183,7 +193,7 @@ func NewBrick(conf Config) *Brick {
     serveMux        : mux,
     funcMap         : template.FuncMap{},
     log             : conf.Log,
-    errorHandle     : defaultErrorHandle,
+    errorHandle     : eh,
 		serv 						: http.Server{Addr: hport, Handler: mux},
 		staticCacheSec  : conf.StaticCacheSeconds,
   
@@ -302,11 +312,6 @@ func (b *Brick) Service(path string, h HttpHandler) {
 }
 
 
-func (b *Brick) SetErrorHandler(p HttpErrorHandler) {
-  b.errorHandle = p
-}
-
-
 func defaultErrorHandle(hd *Http, err interface{}) {
   hd.W.WriteHeader(500)
   hd.WriteStr(`<p>Service Error</p>`)
@@ -418,12 +423,18 @@ func (b *Brick) HttpJumpMapping(location string, to string) {
 
 //
 // 设置静态文件服务, 必须在该方法之前设置 log 否则无效
+// eh 可用为 nil, 否则在遇到错误时会回掉该方法
 //
 func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
   if (!strings.HasSuffix(baseURL, "/")) {
     baseURL = baseURL + "/"
   }
   local := http.StripPrefix(baseURL, http.FileServer(http.Dir(fileDir)));
+
+	if b.errorHandle != nil {
+		local = &WrapErrorHandler{ local, b.errorHandle, b, nil }
+	}
+
   staticPage := StaticPage {
 		BaseUrl		: baseURL,
 		FilePath	: fileDir,
@@ -434,6 +445,53 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
 		cacheSec  : b.staticCacheSec,
   };
   b.serveMux.Handle(baseURL, &staticPage);
+}
+
+
+type WrapErrorHandler struct {
+	src http.Handler
+	eh  HttpErrorHandler
+	b   *Brick
+	http.ResponseWriter
+}
+
+
+func (w *WrapErrorHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	_resp := &WrapErrorResponse{ resp, 0, make([]byte, 0, 20) }
+	w.src.ServeHTTP(_resp, req)
+
+	if _resp.haserr != 0 {
+		err := HttpError{ _resp.haserr, errors.New(string(_resp.errmsg)) }
+		hd := Http{ req, resp, w.b, nil, nil, nil, "" }
+		w.eh(&hd, err)
+	}
+}
+
+
+// 如果设置了 http 错误代码, 会拦截输出作为错误源
+type WrapErrorResponse struct {
+	http.ResponseWriter
+	// 0 表示没有错误
+	haserr int
+	errmsg []byte
+}
+
+
+func (w *WrapErrorResponse) WriteHeader(statusCode int) {
+	if statusCode >= 400 {
+		w.haserr = statusCode
+	} else {
+		w.ResponseWriter.WriteHeader(statusCode)
+	}
+}
+
+
+func (w *WrapErrorResponse) Write(b []byte) (int, error) {
+	if w.haserr != 0 {
+		w.errmsg = append(w.errmsg, b...)
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 
@@ -726,7 +784,7 @@ func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Cache-Control", "no-cache")
 	p.localFS.ServeHTTP(w, r)
   if *p.debug { 
-		serviceLog(p.log, begin, r, ""); 
+		serviceLog(p.log, begin, r, "[fs]"); 
 	}
 }
 
