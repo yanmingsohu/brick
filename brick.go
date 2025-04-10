@@ -50,6 +50,8 @@ type Logger interface {
 	Panicln(v ...any)
 }
 
+type StaticFilter func(file string, w http.ResponseWriter, r *http.Request) error
+
 //
 // 方便编写 http 服务
 //
@@ -67,6 +69,7 @@ type Brick struct {
   Debug           bool
 	serv            http.Server
 	staticCacheSec  int
+	staticf         StaticFilter
 } 
 
 type Http struct {
@@ -90,6 +93,8 @@ type StaticPage struct {
 	mapping    StaticResource
 	debug      *bool
 	cacheSec   int
+	filter     StaticFilter
+	eh         HttpErrorHandler
 }
 
 //
@@ -149,6 +154,7 @@ type Config struct {
 	ErrorHandle HttpErrorHandler
 	ListenerAddr string
 	FunctionMap template.FuncMap
+	StaticFilter StaticFilter
 }
 
 
@@ -205,6 +211,7 @@ func NewBrick(conf Config) *Brick {
     errorHandle     : conf.ErrorHandle,
 		serv 						: http.Server{Addr: conf.GetPortStr(), Handler: mux},
 		staticCacheSec  : conf.StaticCacheSeconds,
+		staticf         : conf.StaticFilter,
   
     sess: sessions.New(sessions.Config{
       Cookie: conf.CookieName,
@@ -443,6 +450,8 @@ func (b *Brick) StaticPage(baseURL string, fileDir string, res StaticResource) {
 		mapping   : res,
 		debug     : &b.Debug,
 		cacheSec  : b.staticCacheSec,
+		filter    : b.staticf,
+		eh        : b.errorHandle,
   };
   b.serveMux.Handle(baseURL, &staticPage);
 }
@@ -762,6 +771,14 @@ func (b *Http) SetDownloadFilename(s string) {
 func (p *StaticPage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
   fileName := r.URL.Path[len(p.BaseUrl):]
   begin    := time.Now()
+
+	if p.filter != nil {
+		if err := p.filter(fileName, w, r); err != nil {
+			h := Http{ r, w, nil, nil, nil, nil, "" }
+			p.eh(&h, err)
+			return
+		}
+	}
 
 	if p.mapping != nil {
   	content, has := p.mapping[fileName]
