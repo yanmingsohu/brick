@@ -2,6 +2,8 @@ package brick
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -155,11 +157,43 @@ type Config struct {
 	ListenerAddr string
 	FunctionMap template.FuncMap
 	StaticFilter StaticFilter
+	Tls *tls.Config
 }
 
 
 func (c *Config) GetPortStr() string {
 	return ":"+ strconv.Itoa(c.HttpPort);
+}
+
+
+// parses a public/private key pair from a pair of PEM encoded data. 
+// add the certificate on tls config.
+func (c *Config) ParseTlsCert(cert_pem, key_pem string) error {
+	cert, err := tls.X509KeyPair([]byte(cert_pem), []byte(key_pem))
+	if err != nil {
+		return err
+	}
+	if c.Tls == nil {
+		c.Tls = &tls.Config{}
+	}
+	c.Tls.Certificates = append(c.Tls.Certificates, cert)
+	return nil
+}
+
+
+// 一定会设置 Tls, 如果证书有效返回 true
+func (c *Config) AddTlsCA(ca_cert_pem string) bool {
+	if c.Tls == nil {
+		c.Tls = &tls.Config{}
+	}
+	if c.Tls.RootCAs == nil {
+		var err error
+		c.Tls.RootCAs, err = x509.SystemCertPool()
+		if err != nil {
+			c.Tls.RootCAs = x509.NewCertPool()
+		}
+	}
+	return c.Tls.RootCAs.AppendCertsFromPEM([]byte(ca_cert_pem))
 }
 
 
@@ -209,7 +243,7 @@ func NewBrick(conf Config) *Brick {
     funcMap         : conf.FunctionMap,
     log             : conf.Log,
     errorHandle     : conf.ErrorHandle,
-		serv 						: http.Server{Addr: conf.GetPortStr(), Handler: mux},
+		serv 						: http.Server{ Addr: conf.GetPortStr(), Handler: mux, TLSConfig: conf.Tls },
 		staticCacheSec  : conf.StaticCacheSeconds,
 		staticf         : conf.StaticFilter,
   
@@ -255,9 +289,12 @@ func (b *Brick) StartHttpServer() error {
 }
 
 
-func (b *Brick) StartHttpsServer(cert string, key string) error {
+//
+// 必要时在启动前设置 Config.Tls
+//
+func (b *Brick) StartHttpsServer() error {
   b.log.Println("Server on https://"+ b.addr)
-	return b.serv.ListenAndServeTLS(cert, key)
+	return b.serv.ListenAndServeTLS("", "")
 }
 
 
