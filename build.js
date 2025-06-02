@@ -72,7 +72,10 @@ outfile.beginFunc("init");
 buildDir([], pt.join(process.cwd(), cf.wwwDir), outfile, function() {
   outfile.endFunc();
   outfile.writeHelper();
-  console.log("\nDone", outfile.fileName);
+  console.log();
+  console.log("Total file size:", outfile.allSize());
+  console.log("Done", outfile.fileName);
+  console.log();
 });
 
 
@@ -109,6 +112,7 @@ function buildDir(webbase, dir, outfile, on_end) {
 function makeSource(outFile, varName, packageName, dbg) {
   var file = fs.openSync(outFile, 'w');
   var count = 0;
+  var alltotal = 0;
 
   return {
     fileName   : outFile,
@@ -118,7 +122,12 @@ function makeSource(outFile, varName, packageName, dbg) {
     beginFunc  : beginFunc,
     endFunc    : endFunc,
     writeHelper: writeHelper,
+    allSize,
   };
+
+  function allSize() {
+    return (alltotal/1024).toFixed(2) +"Kbytes"
+  }
 
   function fileHeader() {
     fs.writeSync(file, "// generate by brick web static resource complie, ");
@@ -220,6 +229,7 @@ function makeSource(outFile, varName, packageName, dbg) {
       if (dbg) fs.writeSync(file, ['\nlog.Println(_unzname(', logstr, '))'].join(''))
       showStat();
       over();
+      alltotal += stat.min || stat.total;
     }
 
     function showStat() {
